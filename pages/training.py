@@ -8,31 +8,20 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.metrics import roc_curve
 
-from utils import train_all_models, TARGETS, TARGET_META
+from utils import train_all_models, TARGETS
 
 
-# ---------------- BASE PLOT THEME ----------------
+# ---------------- BASE STYLE ----------------
 
-PT = dict(
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    font=dict(color='#7c8fad', family='Plus Jakarta Sans'),
-    xaxis=dict(
-        gridcolor='rgba(255,255,255,0.04)',
-        zeroline=False,
-        tickfont=dict(size=10)
-    ),
-    yaxis=dict(
-        gridcolor='rgba(255,255,255,0.04)',
-        zeroline=False,
-        tickfont=dict(size=10)
-    ),
-    margin=dict(l=0, r=0, t=10, b=0),
-    legend=dict(
-        bgcolor='rgba(0,0,0,0)',
-        font=dict(size=10)
-    ),
-)
+def apply_layout(fig, top_margin=10):
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#7c8fad', family='Plus Jakarta Sans'),
+        margin=dict(l=0, r=0, t=top_margin, b=0),
+        legend=dict(bgcolor='rgba(0,0,0,0)', font=dict(size=10)),
+    )
+
 
 TARGET_COLORS = {
     'Attrition': '#ff6b6b',
@@ -48,7 +37,7 @@ TARGET_COLORS = {
 
 def show():
 
-    # ---------------- SAFE SESSION STATE ----------------
+    # ---------------- SESSION SAFETY ----------------
 
     if "models_trained" not in st.session_state:
         st.session_state.models_trained = False
@@ -79,17 +68,17 @@ def show():
 
             n_samples = st.slider(
                 "Training samples",
-                min_value=500,
-                max_value=3000,
-                value=1500,
-                step=100
+                500,
+                3000,
+                1500,
+                100
             )
 
             seed = st.number_input(
                 "Random seed",
-                min_value=0,
-                max_value=999,
-                value=42
+                0,
+                999,
+                42
             )
 
         with col_b:
@@ -103,7 +92,7 @@ def show():
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ---------------- TRAIN TRIGGER ----------------
+    # ---------------- TRAIN ----------------
 
     if train_btn or st.session_state.get("models_trained", False):
 
@@ -134,17 +123,15 @@ def show():
 
         results = st.session_state.results
 
-        # ---------------- TABS ----------------
-
         tab1, tab2, tab3 = st.tabs([
             "📊 Model Comparison",
             "📈 ROC Curves",
             "🧩 Confusion Matrices"
         ])
 
-        # ==========================================================
+        # ======================================================
         # ROC CURVES
-        # ==========================================================
+        # ======================================================
 
         with tab2:
 
@@ -202,7 +189,6 @@ def show():
                             )
 
                 fig_roc.add_trace(
-
                     go.Scatter(
                         x=[0, 1],
                         y=[0, 1],
@@ -215,15 +201,12 @@ def show():
                     )
                 )
 
+                apply_layout(fig_roc)
+
                 fig_roc.update_layout(
-                    **PT,
                     height=430,
                     xaxis_title='False Positive Rate',
-                    yaxis_title='True Positive Rate'
-                )
-
-                fig_roc.update_layout(
-
+                    yaxis_title='True Positive Rate',
                     legend=dict(
                         orientation='h',
                         y=-0.2
@@ -232,7 +215,7 @@ def show():
 
                 st.plotly_chart(
                     fig_roc,
-                    use_container_width=True
+                    width="stretch"
                 )
 
             else:
@@ -241,9 +224,9 @@ def show():
                     "No binary classification targets available for ROC."
                 )
 
-        # ==========================================================
+        # ======================================================
         # CONFUSION MATRICES
-        # ==========================================================
+        # ======================================================
 
         with tab3:
 
@@ -292,17 +275,12 @@ def show():
                             title=f"{target} — {best_model}"
                         )
 
-                        layout_cm = PT.copy()
-
-                        layout_cm["margin"] = dict(
-                            l=0,
-                            r=0,
-                            t=45,
-                            b=0
+                        apply_layout(
+                            fig_cm,
+                            top_margin=45
                         )
 
                         fig_cm.update_layout(
-                            **layout_cm,
                             height=270,
                             coloraxis_showscale=False,
                             title_font=dict(
@@ -313,7 +291,7 @@ def show():
 
                         col.plotly_chart(
                             fig_cm,
-                            use_container_width=True
+                            width="stretch"
                         )
 
                     except Exception as e:
