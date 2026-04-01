@@ -7,6 +7,8 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
+from pandas.api.types import is_numeric_dtype
+
 from utils import (
     TARGET_META,
     TARGETS,
@@ -15,19 +17,19 @@ from utils import (
     encode_df
 )
 
-# =====================================
+# ======================================================
 # SAFE COLOR
-# =====================================
+# ======================================================
 
 def safe_fill_color(color, alpha=0.05):
 
-    if color.startswith("rgb("):
+    if isinstance(color, str) and color.startswith("rgb("):
         return color.replace("rgb(", "rgba(").replace(")", f",{alpha})")
 
-    if color.startswith("rgba("):
+    if isinstance(color, str) and color.startswith("rgba("):
         return color
 
-    if color.startswith("#"):
+    if isinstance(color, str) and color.startswith("#"):
         r = int(color[1:3], 16)
         g = int(color[3:5], 16)
         b = int(color[5:7], 16)
@@ -36,9 +38,9 @@ def safe_fill_color(color, alpha=0.05):
     return f"rgba(0,0,0,{alpha})"
 
 
-# =====================================
+# ======================================================
 # THEME
-# =====================================
+# ======================================================
 
 PT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
@@ -58,9 +60,9 @@ TARGET_COLORS = {
 }
 
 
-# =====================================
+# ======================================================
 # SAFE LAYOUT
-# =====================================
+# ======================================================
 
 def apply_layout(fig, top_margin=10, legend_override=None):
 
@@ -74,29 +76,39 @@ def apply_layout(fig, top_margin=10, legend_override=None):
     fig.update_layout(**layout)
 
     fig.update_layout(
-        margin=dict(l=0, r=0, t=top_margin, b=0)
+        margin=dict(
+            l=0,
+            r=0,
+            t=top_margin,
+            b=0
+        )
     )
 
     if legend_override:
-        fig.update_layout(legend=legend_override)
+        fig.update_layout(
+            legend=legend_override
+        )
 
 
-# =====================================
+# ======================================================
 # MAIN PAGE
-# =====================================
+# ======================================================
 
 def show():
 
     if not st.session_state.get("models_trained", False):
-        st.warning("Train models first on Model Training page")
+
+        st.warning(
+            "Train models first on Model Training page"
+        )
         return
 
     results = st.session_state.results
     scaler = st.session_state.scaler
 
-    # =====================================
-    # HEATMAP
-    # =====================================
+    # ==================================================
+    # FEATURE IMPORTANCE HEATMAP
+    # ==================================================
 
     st.subheader("Feature Importance Heatmap")
 
@@ -106,9 +118,13 @@ def show():
 
         rf = tres.get("Random Forest")
 
-        if rf and hasattr(rf["model"], "feature_importances_"):
+        if rf and hasattr(
+            rf["model"],
+            "feature_importances_"
+        ):
 
-            imp_data[target] = rf["model"].feature_importances_
+            imp_data[target] = \
+                rf["model"].feature_importances_
 
     if imp_data:
 
@@ -125,13 +141,18 @@ def show():
 
         apply_layout(fig_heat)
 
-        fig_heat.update_layout(height=280)
+        fig_heat.update_layout(
+            height=280
+        )
 
-        st.plotly_chart(fig_heat, width="stretch")
+        st.plotly_chart(
+            fig_heat,
+            width="stretch"
+        )
 
-    # =====================================
-    # SELECTORS
-    # =====================================
+    # ==================================================
+    # SELECT TARGET + MODEL
+    # ==================================================
 
     col1, col2 = st.columns(2)
 
@@ -146,12 +167,14 @@ def show():
 
         model_sel = st.selectbox(
             "Model",
-            list(results[target_sel].keys())
+            list(
+                results[target_sel].keys()
+            )
         )
 
-    # =====================================
-    # FEATURE SELECTION
-    # =====================================
+    # ==================================================
+    # FEATURE SENSITIVITY
+    # ==================================================
 
     st.subheader("Feature Sensitivity Analysis")
 
@@ -160,49 +183,76 @@ def show():
         FEATURE_COLS
     )
 
-    # Always start from ORIGINAL data
+    # Always start from clean base data
     df_base = generate_data(100)
 
-    # Detect categorical
-    is_categorical = (
-        df_base[sweep_feat].dtype == "object"
+    col_series = df_base[sweep_feat]
+
+    # Try converting numeric-like strings
+    col_numeric = pd.to_numeric(
+        col_series,
+        errors="coerce"
     )
 
-    if is_categorical:
+    if (
+        is_numeric_dtype(col_numeric)
+        and col_numeric.notna().sum() > 0
+    ):
+
+        # NUMERIC FEATURE
+
+        is_categorical = False
+
+        min_val = col_numeric.min()
+        max_val = col_numeric.max()
+
+        sweep_vals = np.linspace(
+            float(min_val),
+            float(max_val),
+            35
+        )
+
+    else:
+
+        # CATEGORICAL FEATURE
+
+        is_categorical = True
 
         sweep_vals = (
-            df_base[sweep_feat]
+            col_series
+            .astype(str)
             .dropna()
             .unique()
             .tolist()
         )
 
-    else:
+    sweep_res = {
+        t: []
+        for t in TARGETS
+    }
 
-        sweep_vals = np.linspace(
-            df_base[sweep_feat].min(),
-            df_base[sweep_feat].max(),
-            35
-        )
-
-    sweep_res = {t: [] for t in TARGETS}
-
-    # =====================================
+    # ==================================================
     # RUN SWEEP
-    # =====================================
+    # ==================================================
 
     for val in sweep_vals:
 
-        # COPY ORIGINAL DATA
         df_temp = df_base.copy()
 
-        # APPLY CHANGE
-        df_temp[sweep_feat] = val
+        if is_categorical:
 
-        # ENCODE
-        df_encoded, _ = encode_df(df_temp)
+            df_temp[sweep_feat] = str(val)
 
-        # SCALE
+        else:
+
+            df_temp[sweep_feat] = float(val)
+
+        # Encode safely
+        df_encoded, _ = encode_df(
+            df_temp
+        )
+
+        # Scale
         X_scaled = pd.DataFrame(
             scaler.transform(
                 df_encoded[FEATURE_COLS]
@@ -210,14 +260,24 @@ def show():
             columns=FEATURE_COLS
         )
 
-        # PREDICT
+        # Predict
         for target, task in TARGETS.items():
 
-            model = results[target]["Random Forest"]["model"]
+            model = results[target][
+                "Random Forest"
+            ]["model"]
 
-            if task == "clf" and hasattr(model, "predict_proba"):
+            if (
+                task == "clf"
+                and hasattr(
+                    model,
+                    "predict_proba"
+                )
+            ):
 
-                prob = model.predict_proba(X_scaled)
+                prob = model.predict_proba(
+                    X_scaled
+                )
 
                 sweep_res[target].append(
                     prob[:, 1].mean()
@@ -225,15 +285,17 @@ def show():
 
             else:
 
-                pred = model.predict(X_scaled)
+                pred = model.predict(
+                    X_scaled
+                )
 
                 sweep_res[target].append(
                     pred.mean()
                 )
 
-    # =====================================
+    # ==================================================
     # PLOT
-    # =====================================
+    # ==================================================
 
     fig_sw = go.Figure()
 
@@ -247,7 +309,10 @@ def show():
                 y=vals,
                 mode="lines",
                 name=TARGET_META[target]["label"],
-                line=dict(color=c, width=2.5),
+                line=dict(
+                    color=c,
+                    width=2.5
+                ),
                 fill="tozeroy",
                 fillcolor=safe_fill_color(c)
             )
@@ -267,4 +332,7 @@ def show():
         yaxis_title="Prediction / Probability"
     )
 
-    st.plotly_chart(fig_sw, width="stretch")
+    st.plotly_chart(
+        fig_sw,
+        width="stretch"
+    )
