@@ -15,9 +15,11 @@ from utils import (
     encode_df
 )
 
-# ---------------- SAFE COLOR FUNCTION ----------------
+# ===============================
+# SAFE COLOR HANDLER
+# ===============================
 
-def safe_fill_color(color, alpha=0.04):
+def safe_fill_color(color, alpha=0.05):
 
     if isinstance(color, str) and color.startswith("rgb("):
         return color.replace("rgb(", "rgba(").replace(")", f",{alpha})")
@@ -25,7 +27,7 @@ def safe_fill_color(color, alpha=0.04):
     if isinstance(color, str) and color.startswith("rgba("):
         return color
 
-    if isinstance(color, str) and color.startswith("#") and len(color) == 7:
+    if isinstance(color, str) and color.startswith("#"):
 
         r = int(color[1:3], 16)
         g = int(color[3:5], 16)
@@ -36,48 +38,58 @@ def safe_fill_color(color, alpha=0.04):
     return f"rgba(0,0,0,{alpha})"
 
 
-# ---------------- BASE THEME ----------------
+# ===============================
+# GLOBAL THEME
+# ===============================
 
 PT = dict(
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    font=dict(color='#7c8fad', family='Plus Jakarta Sans'),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(
+        color="#7c8fad",
+        family="Plus Jakarta Sans"
+    ),
     xaxis=dict(
-        gridcolor='rgba(255,255,255,0.04)',
-        zeroline=False,
-        tickfont=dict(size=10)
+        gridcolor="rgba(255,255,255,0.04)",
+        zeroline=False
     ),
     yaxis=dict(
-        gridcolor='rgba(255,255,255,0.04)',
-        zeroline=False,
-        tickfont=dict(size=10)
+        gridcolor="rgba(255,255,255,0.04)",
+        zeroline=False
     ),
     margin=dict(l=0, r=0, t=10, b=0),
     legend=dict(
-        bgcolor='rgba(0,0,0,0)',
-        font=dict(size=10)
+        bgcolor="rgba(0,0,0,0)"
     ),
 )
 
 TARGET_COLORS = {
-    'Attrition': '#ff6b6b',
-    'PerformanceRating': '#f59e0b',
-    'AbsentDays': '#00a8ff',
-    'PromotionLikelihood': '#00d4a1',
+    "Attrition": "#ff6b6b",
+    "PerformanceRating": "#f59e0b",
+    "AbsentDays": "#00a8ff",
+    "PromotionLikelihood": "#00d4a1",
 }
 
 
-# ---------------- SAFE LAYOUT HELPER ----------------
+# ===============================
+# PERMANENT SAFE LAYOUT
+# ===============================
 
 def apply_layout(fig, top_margin=10, legend_override=None):
 
     layout = PT.copy()
 
+    # Remove conflicting keys
+    layout.pop("margin", None)
+
     if legend_override is not None:
         layout.pop("legend", None)
 
+    # Apply base
+    fig.update_layout(**layout)
+
+    # Apply margin once
     fig.update_layout(
-        **layout,
         margin=dict(
             l=0,
             r=0,
@@ -86,6 +98,7 @@ def apply_layout(fig, top_margin=10, legend_override=None):
         )
     )
 
+    # Apply legend safely
     if legend_override:
 
         fig.update_layout(
@@ -93,34 +106,36 @@ def apply_layout(fig, top_margin=10, legend_override=None):
         )
 
 
-# ==========================================================
+# ===============================
 # MAIN PAGE
-# ==========================================================
+# ===============================
 
 def show():
 
-    if not st.session_state.get("models_trained", False):
+    # ---------------------------
+    # CHECK TRAINING STATE
+    # ---------------------------
 
-        st.markdown("""
-        <div style="padding:1.2rem;background:rgba(245,158,11,0.08);
-                    border:1px solid rgba(245,158,11,0.2);
-                    border-radius:10px;color:#f59e0b;">
-          ⚠ Train models first on the Model Training page
-        </div>
-        """, unsafe_allow_html=True)
+    if not st.session_state.get(
+        "models_trained",
+        False
+    ):
+
+        st.warning(
+            "Train models first on the Model Training page"
+        )
 
         return
 
     results = st.session_state.results
     scaler = st.session_state.scaler
 
-    # ---------------- Heatmap ----------------
+    # ---------------------------
+    # HEATMAP
+    # ---------------------------
 
-    st.markdown(
-        '<div class="chart-card"><div class="chart-title">'
-        'Feature Importance Heatmap — Random Forest'
-        '</div>',
-        unsafe_allow_html=True
+    st.subheader(
+        "Feature Importance Heatmap"
     )
 
     imp_data = {}
@@ -146,7 +161,7 @@ def show():
 
         fig_heat = px.imshow(
             imp_df.T,
-            text_auto=".3f",
+            text_auto=".2f",
             aspect="auto"
         )
 
@@ -161,16 +176,16 @@ def show():
             width="stretch"
         )
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # ---------------- Target Selection ----------------
+    # ---------------------------
+    # SELECT TARGET + MODEL
+    # ---------------------------
 
     col1, col2 = st.columns(2)
 
     with col1:
 
         target_sel = st.selectbox(
-            "Prediction target",
+            "Prediction Target",
             list(TARGETS.keys())
         )
 
@@ -178,26 +193,32 @@ def show():
 
         model_sel = st.selectbox(
             "Model",
-            list(results[target_sel].keys())
+            list(
+                results[target_sel].keys()
+            )
         )
-
-    mres = results[target_sel][model_sel]
 
     color = TARGET_COLORS[target_sel]
 
-    # ---------------- Sensitivity Sweep ----------------
+    # ---------------------------
+    # SENSITIVITY SWEEP
+    # ---------------------------
 
-    st.markdown("<hr>", unsafe_allow_html=True)
+    st.subheader(
+        "Feature Sensitivity Analysis"
+    )
 
     sweep_feat = st.selectbox(
-        "Sweep feature",
+        "Select Feature",
         FEATURE_COLS,
-        index=6
+        index=0
     )
 
     df_base = generate_data(100)
 
-    df_enc, _ = encode_df(df_base)
+    df_enc, _ = encode_df(
+        df_base
+    )
 
     X_base = pd.DataFrame(
         scaler.transform(
@@ -206,8 +227,13 @@ def show():
         columns=FEATURE_COLS
     )
 
-    f_min = int(df_base[sweep_feat].min())
-    f_max = int(df_base[sweep_feat].max())
+    f_min = int(
+        df_base[sweep_feat].min()
+    )
+
+    f_max = int(
+        df_base[sweep_feat].max()
+    )
 
     sweep_vals = np.linspace(
         f_min,
@@ -220,40 +246,63 @@ def show():
         for t in TARGETS
     }
 
+    # ---------------------------
+    # RUN SWEEP
+    # ---------------------------
+
     for val in sweep_vals:
 
         X_orig = pd.DataFrame(
-            scaler.inverse_transform(X_base),
+            scaler.inverse_transform(
+                X_base
+            ),
             columns=FEATURE_COLS
         )
 
         X_orig[sweep_feat] = val
 
-        X_rsc = pd.DataFrame(
-            scaler.transform(X_orig),
+        X_scaled = pd.DataFrame(
+            scaler.transform(
+                X_orig
+            ),
             columns=FEATURE_COLS
         )
 
-        for target, task_t in TARGETS.items():
+        for target, task in TARGETS.items():
 
             model = results[target][
                 "Random Forest"
             ]["model"]
 
-            if task_t == "clf" and \
-               hasattr(model, "predict_proba"):
+            if (
+                task == "clf"
+                and hasattr(
+                    model,
+                    "predict_proba"
+                )
+            ):
 
-                p = model.predict_proba(X_rsc)
+                prob = model.predict_proba(
+                    X_scaled
+                )
 
                 sweep_res[target].append(
-                    p[:, 1].mean()
+                    prob[:, 1].mean()
                 )
 
             else:
 
-                sweep_res[target].append(
-                    model.predict(X_rsc).mean()
+                pred = model.predict(
+                    X_scaled
                 )
+
+                sweep_res[target].append(
+                    pred.mean()
+                )
+
+    # ---------------------------
+    # PLOT SWEEP
+    # ---------------------------
 
     fig_sw = go.Figure()
 
@@ -281,14 +330,19 @@ def show():
         fig_sw,
         legend_override=dict(
             orientation="h",
-            y=-0.2
+            y=-0.25
         )
     )
 
     fig_sw.update_layout(
+
         height=360,
+
         xaxis_title=sweep_feat,
-        yaxis_title="Predicted Value / Probability"
+
+        yaxis_title=
+        "Predicted Value / Probability"
+
     )
 
     st.plotly_chart(
