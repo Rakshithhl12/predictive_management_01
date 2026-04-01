@@ -21,13 +21,13 @@ from utils import (
 
 def safe_fill_color(color, alpha=0.05):
 
-    if isinstance(color, str) and color.startswith("rgb("):
+    if color.startswith("rgb("):
         return color.replace("rgb(", "rgba(").replace(")", f",{alpha})")
 
-    if isinstance(color, str) and color.startswith("rgba("):
+    if color.startswith("rgba("):
         return color
 
-    if isinstance(color, str) and color.startswith("#"):
+    if color.startswith("#"):
         r = int(color[1:3], 16)
         g = int(color[3:5], 16)
         b = int(color[5:7], 16)
@@ -59,7 +59,7 @@ TARGET_COLORS = {
 
 
 # =====================================
-# SAFE LAYOUT (FIXES ALL ERRORS)
+# SAFE LAYOUT
 # =====================================
 
 def apply_layout(fig, top_margin=10, legend_override=None):
@@ -68,7 +68,7 @@ def apply_layout(fig, top_margin=10, legend_override=None):
 
     layout.pop("margin", None)
 
-    if legend_override is not None:
+    if legend_override:
         layout.pop("legend", None)
 
     fig.update_layout(**layout)
@@ -107,6 +107,7 @@ def show():
         rf = tres.get("Random Forest")
 
         if rf and hasattr(rf["model"], "feature_importances_"):
+
             imp_data[target] = rf["model"].feature_importances_
 
     if imp_data:
@@ -135,19 +136,21 @@ def show():
     col1, col2 = st.columns(2)
 
     with col1:
+
         target_sel = st.selectbox(
             "Prediction Target",
             list(TARGETS.keys())
         )
 
     with col2:
+
         model_sel = st.selectbox(
             "Model",
             list(results[target_sel].keys())
         )
 
     # =====================================
-    # SENSITIVITY ANALYSIS
+    # FEATURE SELECTION
     # =====================================
 
     st.subheader("Feature Sensitivity Analysis")
@@ -157,10 +160,15 @@ def show():
         FEATURE_COLS
     )
 
+    # Always start from ORIGINAL data
     df_base = generate_data(100)
 
-    # Detect type
-    if df_base[sweep_feat].dtype == "object":
+    # Detect categorical
+    is_categorical = (
+        df_base[sweep_feat].dtype == "object"
+    )
+
+    if is_categorical:
 
         sweep_vals = (
             df_base[sweep_feat]
@@ -169,24 +177,13 @@ def show():
             .tolist()
         )
 
-        is_categorical = True
-
     else:
 
-        f_min = df_base[sweep_feat].min()
-        f_max = df_base[sweep_feat].max()
-
-        sweep_vals = np.linspace(f_min, f_max, 35)
-
-        is_categorical = False
-
-    # Base encoded data
-    df_enc, _ = encode_df(df_base)
-
-    X_base = pd.DataFrame(
-        scaler.transform(df_enc[FEATURE_COLS]),
-        columns=FEATURE_COLS
-    )
+        sweep_vals = np.linspace(
+            df_base[sweep_feat].min(),
+            df_base[sweep_feat].max(),
+            35
+        )
 
     sweep_res = {t: [] for t in TARGETS}
 
@@ -196,25 +193,24 @@ def show():
 
     for val in sweep_vals:
 
-        X_orig = pd.DataFrame(
-            scaler.inverse_transform(X_base),
-            columns=FEATURE_COLS
-        )
+        # COPY ORIGINAL DATA
+        df_temp = df_base.copy()
 
-        # Apply change
-        if is_categorical:
-            X_orig[sweep_feat] = str(val)
-        else:
-            X_orig[sweep_feat] = val
+        # APPLY CHANGE
+        df_temp[sweep_feat] = val
 
-        # Re-encode properly
-        X_encoded, _ = encode_df(X_orig)
+        # ENCODE
+        df_encoded, _ = encode_df(df_temp)
 
+        # SCALE
         X_scaled = pd.DataFrame(
-            scaler.transform(X_encoded[FEATURE_COLS]),
+            scaler.transform(
+                df_encoded[FEATURE_COLS]
+            ),
             columns=FEATURE_COLS
         )
 
+        # PREDICT
         for target, task in TARGETS.items():
 
             model = results[target]["Random Forest"]["model"]
@@ -223,13 +219,17 @@ def show():
 
                 prob = model.predict_proba(X_scaled)
 
-                sweep_res[target].append(prob[:, 1].mean())
+                sweep_res[target].append(
+                    prob[:, 1].mean()
+                )
 
             else:
 
                 pred = model.predict(X_scaled)
 
-                sweep_res[target].append(pred.mean())
+                sweep_res[target].append(
+                    pred.mean()
+                )
 
     # =====================================
     # PLOT
@@ -241,15 +241,17 @@ def show():
 
         c = TARGET_COLORS[target]
 
-        fig_sw.add_trace(go.Scatter(
-            x=sweep_vals,
-            y=vals,
-            mode="lines",
-            name=TARGET_META[target]["label"],
-            line=dict(color=c, width=2.5),
-            fill="tozeroy",
-            fillcolor=safe_fill_color(c)
-        ))
+        fig_sw.add_trace(
+            go.Scatter(
+                x=sweep_vals,
+                y=vals,
+                mode="lines",
+                name=TARGET_META[target]["label"],
+                line=dict(color=c, width=2.5),
+                fill="tozeroy",
+                fillcolor=safe_fill_color(c)
+            )
+        )
 
     apply_layout(
         fig_sw,
